@@ -8,7 +8,7 @@ _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)
 import os
 from missions._common import num, catalog_by_type, ROOT
 from finops import report, sustainability
-from missions import m1_efficiency_audit, m2_inference_levers, m3_purchasing
+from missions import m1_efficiency_audit, m2_inference_levers, m3_purchasing, report_extensions
 
 DAYS = 30
 # one tier down for over-provisioned ("util-lie") GPUs
@@ -52,20 +52,30 @@ def run(verbose: bool = True) -> dict:
         "best_region": min(sustainability.REGION_CARBON, key=sustainability.REGION_CARBON.get),
     }
 
-    md = report.build_report(baseline, optimized, levers, sustainability=sust)
+    reasoning = r2["reasoning"]
+    schedule = r3["carbon_schedule"]
+    details = report_extensions.build_details(r1, r2, r3, levers)
+    md = report.build_report(baseline, optimized, levers, sustainability=sust, details=details)
     out_md = os.path.join(ROOT, "outputs", "report.md")
     os.makedirs(os.path.dirname(out_md), exist_ok=True)
     with open(out_md, "w") as f:
-        f.write(md)
+        f.write(md.rstrip() + "\n")
     png = report.savings_waterfall(levers, os.path.join(ROOT, "outputs", "savings.png"))
+    writeup_path = os.path.join(ROOT, "outputs", "writeup.md")
+    with open(writeup_path, "w") as f:
+        writeup = report_extensions.build_writeup(baseline, optimized, total_pct, r1, r2, r3, levers)
+        f.write(writeup.rstrip() + "\n")
 
     if verbose:
         print("== M5 Optimization Report ==")
         print(md)
-        print(f"\nWritten: outputs/report.md" + (f" + outputs/savings.png" if png else " (matplotlib absent: PNG skipped)"))
+        print(f"\nWritten: outputs/report.md + outputs/writeup.md" +
+              (" + outputs/savings.png" if png else " (matplotlib absent: PNG skipped)"))
 
     return {"baseline_monthly": round(baseline), "optimized_monthly": round(optimized),
-            "levers": levers, "total_savings_pct": round(total_pct, 1)}
+            "levers": levers, "total_savings_pct": round(total_pct, 1),
+            "writeup_path": writeup_path, "reasoning": reasoning,
+            "carbon_schedule": schedule}
 
 
 if __name__ == "__main__":
